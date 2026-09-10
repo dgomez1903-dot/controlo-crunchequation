@@ -2,7 +2,7 @@
 
 Painel mensal de pagamentos em falta. O código vive no GitHub, a página é servida
 por um Worker do Cloudflare, o estado é guardado no Cloudflare KV e o acesso é protegido
-por login por email através do Cloudflare Access.
+por palavra-passe, verificada pelo próprio Worker.
 
 ```
 wrangler.jsonc          configuração do Worker
@@ -36,18 +36,26 @@ Se o build voltar a falhar, abre o registo: a mensagem diz sempre o que faltou.
 Abre o endereço do Worker seguido de `/api/estado?mes=2026-09`.
 Deve responder `{"ok":true,"estado":null,"at":0}`.
 
-### 5. Pôr o login à frente
+### 5. Definir a palavra-passe
 
-No projeto, separador **Access**, ou em **Zero Trust → Access → Applications → Add an
-application → Self-hosted**.
+No Worker: **Settings → Variables and Secrets → Add**.
 
-- Domain: o endereço `workers.dev` do projeto
-- Identity provider: **One-time PIN**
-- Política: Action **Allow**, Include → **Emails** → os endereços que podem entrar
+- Type: **Secret** (não Text, senão fica à vista e é apagada a cada publicação)
+- Variable name: `SENHA`
+- Value: a palavra-passe
+
+Escolhe uma frase longa em vez de uma palavra curta. Guarda-a no gestor de senhas.
+Sem este segredo definido, o Worker recusa-se a servir seja o que for.
+
+Trocar a `SENHA` fecha todas as sessões abertas, em todos os dispositivos. É assim que
+se revoga o acesso a alguém.
+
+O endereço `/sair` termina a sessão no dispositivo onde for aberto. Está ligado ao
+rodapé das páginas.
 
 ## Como funciona no dia a dia
 
-Abres o link no computador ou no telemóvel, entras com o código que recebes por email, e
+Abres o link no computador ou no telemóvel, entras com a palavra-passe, e
 marcas ou editas o que precisares. Cada alteração é gravada no browser de imediato e
 enviada para o servidor logo a seguir; o rodapé mostra a hora da última sincronização.
 Quando voltas a um separador que estava aberto, o painel vai buscar a versão mais recente.
