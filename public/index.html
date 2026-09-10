@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Crunchequation — controlo de pagamentos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#14202B;--ink-soft:#4C5C68;--ink-faint:#7C8B96;--paper:#E9EDEF;--card:#fff;--rule:#C9D3DA;--ok:#1F7A4D;--due:#B3261E}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:26px 18px 60px}
+  .mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+  header{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:24px}
+  h1{font-size:1.5rem;font-weight:600;margin:0 0 3px;letter-spacing:-.015em}
+  .sub{font-size:.78rem;color:var(--ink-soft)}
+  a.month{
+    display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
+    background:var(--card);border:1px solid var(--rule);border-left:5px solid var(--ink);
+    padding:15px 17px;margin-bottom:10px;text-decoration:none;color:inherit;
+  }
+  a.month:hover{border-left-color:var(--ok)}
+  a.month:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+  .m-name{font-weight:600;font-size:1.05rem}
+  .m-note{font-size:.76rem;color:var(--ink-faint);margin-top:2px}
+  .m-val{text-align:right}
+  .m-val b{display:block;font-size:1.1rem;font-weight:600}
+  .m-val span{font-size:.72rem;color:var(--ink-soft)}
+  .m-val.open b{color:var(--due)}
+  .m-val.closed b{color:var(--ok)}
+  footer{margin-top:30px;border-top:1px solid var(--rule);padding-top:12px;font-size:.73rem;color:var(--ink-faint);max-width:70ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Crunchequation — controlo de pagamentos</h1>
+    <div class="sub mono">NIF 516803700 · Rua Senhora da Mestra 40, Serzedo · Vila Nova de Gaia</div>
+  </header>
+
+  <div id="lista"></div>
+
+  <footer>Para acrescentar um mês: duplicar a pasta do mês anterior, atualizar os valores no array SEED e juntar uma linha ao array MESES neste ficheiro.</footer>
+</div>
+
+<script>
+  // ---- Editar aqui a cada mês ----------------------------------------
+  var MESES = [
+    { pasta:'2026-09', nome:'Setembro 2026', total:78333.10, estado:'aberto',
+      nota:'folha e tickets de agosto, leasing, seguros, avenças e prestadores' }
+  ];
+  // --------------------------------------------------------------------
+
+  var eur = function(v){ return v.toLocaleString('pt-PT',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; };
+  var box = document.getElementById('lista');
+
+  MESES.forEach(function(m){
+    var a = document.createElement('a');
+    a.className = 'month';
+    a.href = m.pasta + '/';
+    a.innerHTML =
+      '<div><div class="m-name">'+m.nome+'</div><div class="m-note">'+m.nota+'</div></div>'+
+      '<div class="m-val '+(m.estado==='fechado'?'closed':'open')+'">'+
+      '<b class="mono">'+eur(m.total)+'</b><span>'+(m.estado==='fechado'?'fechado':'por fechar')+'</span></div>';
+    box.appendChild(a);
+  });
+</script>
+</body>
+</html>

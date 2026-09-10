@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "controlo-crunchequation",
+  "main": "src/index.js",
+  "compatibility_date": "2026-01-01",
+
+  // As páginas estáticas. O Worker entrega-as quando o pedido não é para /api.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // Namespace controlo-estado.
+  "kv_namespaces": [
+    {
+      "binding": "ESTADO",
+      "id": "c7bd2d7578df49049c8953453af9a27f"
+    }
+  ]
+}
