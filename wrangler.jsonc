@@ -4,10 +4,11 @@
   "main": "src/index.js",
   "compatibility_date": "2026-01-01",
 
-  // As páginas estáticas. O Worker entrega-as quando o pedido não é para /api.
+  // As páginas estáticas. run_worker_first obriga o Worker a correr sempre primeiro,
+  // para que nada seja servido antes de a palavra-passe ser verificada.
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS", 
+    "binding": "ASSETS",
     "run_worker_first": true
   },
 

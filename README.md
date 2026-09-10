@@ -1,8 +1,8 @@
 # Controlo de pagamentos — Crunchequation, Lda
 
 Painel mensal de pagamentos em falta. O código vive no GitHub, a página é servida
-por um Worker do Cloudflare, o estado é guardado no Cloudflare KV e o acesso é protegido
-por palavra-passe, verificada pelo próprio Worker.
+por um Worker do Cloudflare, o estado é guardado no Cloudflare KV As páginas são
+abertas a quem tiver o endereço; gravar no servidor exige palavra-passe.
 
 ```
 wrangler.jsonc          configuração do Worker
@@ -50,12 +50,15 @@ Sem este segredo definido, o Worker recusa-se a servir seja o que for.
 Trocar a `SENHA` fecha todas as sessões abertas, em todos os dispositivos. É assim que
 se revoga o acesso a alguém.
 
-O endereço `/sair` termina a sessão no dispositivo onde for aberto. Está ligado ao
-rodapé das páginas.
+No rodapé do painel há um botão **Entrar para gravar**. Depois de entrares, o mesmo
+botão passa a **Sair** e termina a sessão nesse dispositivo.
+
+Quem abrir o link sem palavra-passe vê o painel e pode mexer nele, mas as alterações
+ficam só no browser dessa pessoa e nunca chegam ao servidor.
 
 ## Como funciona no dia a dia
 
-Abres o link no computador ou no telemóvel, entras com a palavra-passe, e
+Abres o link no computador ou no telemóvel, entras com a palavra-passe pelo rodapé, e
 marcas ou editas o que precisares. Cada alteração é gravada no browser de imediato e
 enviada para o servidor logo a seguir; o rodapé mostra a hora da última sincronização.
 Quando voltas a um separador que estava aberto, o painel vai buscar a versão mais recente.

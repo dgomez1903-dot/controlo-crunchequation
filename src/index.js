@@ -1,7 +1,8 @@
 // Worker do controlo de pagamentos.
 //
-// Antes de servir seja o que for, exige a palavra-passe guardada no segredo SENHA.
-// Depois de entrar, o browser fica com um cookie assinado válido 30 dias.
+// As páginas e a leitura do estado são abertas a quem tiver o endereço.
+// Gravar exige a palavra-passe guardada no segredo SENHA.
+// Quem entra fica com um cookie assinado válido 30 dias.
 // Trocar a SENHA invalida todas as sessões abertas.
 
 const MES_VALIDO = /^\d{4}-\d{2}$/;
@@ -11,10 +12,13 @@ const JANELA_SEGUNDOS = 15 * 60;   // 15 minutos
 
 const enc = new TextEncoder();
 
-function json(obj, status = 200) {
+function json(obj, status = 200, extra = {}) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+    headers: Object.assign(
+      { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+      extra
+    )
   });
 }
 
@@ -59,60 +63,7 @@ async function cookieNovo(segredo) {
   return `sessao=${exp}.${sig}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${DIAS_SESSAO * 86400}`;
 }
 
-// ---- página de entrada ---------------------------------------------------
-
-function escapar(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function paginaEntrada({ erro = '', proximo = '/', status = 200 } = {}) {
-  const html = `<!DOCTYPE html>
-<html lang="pt"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<title>Controlo de pagamentos</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root{--ink:#14202B;--ink-soft:#4C5C68;--paper:#E9EDEF;--card:#fff;--rule:#C9D3DA;--due:#B3261E;--focus:#1B5E9B}
-  *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-    background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
-    line-height:1.45;padding:24px;-webkit-font-smoothing:antialiased}
-  .caixa{background:var(--card);border:1.5px solid var(--ink);padding:26px 26px 24px;width:100%;max-width:390px}
-  h1{font-size:1.15rem;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
-  p.sub{font-size:.78rem;color:var(--ink-soft);margin:0 0 20px}
-  label{display:block;font-size:.75rem;color:var(--ink-soft)}
-  input{display:block;margin-top:5px;width:100%;font-family:inherit;font-size:1rem;
-    padding:10px 11px;border:1px solid var(--rule);background:#FAFCFC;color:var(--ink)}
-  input:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
-  button{margin-top:16px;width:100%;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;
-    padding:11px;border:1.5px solid var(--ink);background:var(--ink);color:#fff}
-  button:hover{background:#0C1720}
-  button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-  .erro{font-size:.78rem;color:var(--due);font-weight:600;margin:14px 0 0}
-</style></head>
-<body>
-  <form class="caixa" method="POST" action="/entrar">
-    <h1>Controlo de pagamentos</h1>
-    <p class="sub">Crunchequation, Lda</p>
-    <input type="hidden" name="proximo" value="${escapar(proximo)}">
-    <label for="senha">Palavra-passe
-      <input id="senha" name="senha" type="password" autocomplete="current-password" autofocus required>
-    </label>
-    <button type="submit">Entrar</button>
-    ${erro ? `<p class="erro">${escapar(erro)}</p>` : ''}
-  </form>
-</body></html>`;
-  return new Response(html, {
-    status,
-    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
-  });
-}
+const COOKIE_VAZIO = 'sessao=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
 
 // ---- limite de tentativas ------------------------------------------------
 
@@ -130,7 +81,7 @@ async function falhou(env, ip) {
 
 // ---- estado --------------------------------------------------------------
 
-async function estado(request, env) {
+async function estado(request, env, podeGravar) {
   if (!env.ESTADO) {
     return json({ ok: false, erro: 'Falta a ligação ao KV. Confirma a binding ESTADO no wrangler.jsonc.' }, 500);
   }
@@ -144,16 +95,19 @@ async function estado(request, env) {
 
   if (request.method === 'GET') {
     const bruto = await env.ESTADO.get(chave);
-    if (!bruto) return json({ ok: true, estado: null, at: 0 });
+    if (!bruto) return json({ ok: true, estado: null, at: 0, podeGravar });
     try {
       const guardado = JSON.parse(bruto);
-      return json({ ok: true, estado: guardado.estado, at: guardado.at || 0 });
+      return json({ ok: true, estado: guardado.estado, at: guardado.at || 0, podeGravar });
     } catch (e) {
       return json({ ok: false, erro: 'O estado guardado está corrompido.' }, 500);
     }
   }
 
   if (request.method === 'PUT') {
+    if (!podeGravar) {
+      return json({ ok: false, erro: 'Precisas da palavra-passe para gravar.', podeGravar: false }, 401);
+    }
     let corpo;
     try {
       corpo = await request.json();
@@ -165,7 +119,7 @@ async function estado(request, env) {
     }
     const at = Date.now();
     await env.ESTADO.put(chave, JSON.stringify({ estado: corpo.estado, at }));
-    return json({ ok: true, at });
+    return json({ ok: true, at, podeGravar: true });
   }
 
   return json({ ok: false, erro: 'Método não suportado.' }, 405);
@@ -184,59 +138,49 @@ export default {
       );
     }
 
-    if (url.pathname === '/sair') {
-      return new Response(null, {
-        status: 303,
-        headers: {
-          'location': '/',
-          'set-cookie': 'sessao=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0'
-        }
-      });
+    if (url.pathname === '/api/sair') {
+      return json({ ok: true, podeGravar: false }, 200, { 'set-cookie': COOKIE_VAZIO });
     }
 
-    if (url.pathname === '/entrar') {
-      if (request.method !== 'POST') return Response.redirect(new URL('/', url).toString(), 303);
+    if (url.pathname === '/api/entrar') {
+      if (request.method !== 'POST') {
+        return json({ ok: false, erro: 'Método não suportado.' }, 405);
+      }
 
       const ip = request.headers.get('cf-connecting-ip') || 'sem-ip';
       if (await tentativas(env, ip) >= MAX_TENTATIVAS) {
-        return paginaEntrada({
-          erro: 'Demasiadas tentativas falhadas. Espera um quarto de hora e tenta outra vez.',
-          status: 429
-        });
+        return json({ ok: false, erro: 'Demasiadas tentativas falhadas. Espera um quarto de hora.' }, 429);
       }
 
-      let form;
+      let senha = '';
       try {
-        form = await request.formData();
+        const corpo = await request.json();
+        senha = String((corpo && corpo.senha) || '');
       } catch (e) {
-        return paginaEntrada({ erro: 'Pedido inválido.', status: 400 });
+        return json({ ok: false, erro: 'Pedido inválido.' }, 400);
       }
-
-      const senha = String(form.get('senha') || '');
-      let proximo = String(form.get('proximo') || '/');
-      if (!proximo.startsWith('/') || proximo.startsWith('//')) proximo = '/';
 
       if (!igual(senha, env.SENHA)) {
         await falhou(env, ip);
-        return paginaEntrada({ erro: 'Palavra-passe errada.', proximo, status: 401 });
+        return json({ ok: false, erro: 'Palavra-passe errada.' }, 401);
       }
 
-      if (env.ESTADO) await env.ESTADO.delete('tentativas:' + ip);
-      return new Response(null, {
-        status: 303,
-        headers: { 'location': proximo, 'set-cookie': await cookieNovo(env.SENHA) }
-      });
+      await env.ESTADO.delete('tentativas:' + ip);
+      return json({ ok: true, podeGravar: true }, 200, { 'set-cookie': await cookieNovo(env.SENHA) });
     }
 
-    if (!(await autenticado(request, env.SENHA))) {
-      if (url.pathname.startsWith('/api/')) {
-        return json({ ok: false, erro: 'Sessão expirada. Recarrega a página e entra outra vez.' }, 401);
-      }
-      return paginaEntrada({ proximo: url.pathname + url.search });
+    const podeGravar = await autenticado(request, env.SENHA);
+
+    if (url.pathname === '/api/estado') return estado(request, env, podeGravar);
+
+    // As páginas não ficam em cache, para o estado de sessão nunca aparecer desatualizado.
+    const resposta = await env.ASSETS.fetch(request);
+    const tipo = resposta.headers.get('content-type') || '';
+    if (tipo.includes('text/html')) {
+      const nova = new Response(resposta.body, resposta);
+      nova.headers.set('cache-control', 'no-store, must-revalidate');
+      return nova;
     }
-
-    if (url.pathname === '/api/estado') return estado(request, env);
-
-    return env.ASSETS.fetch(request);
+    return resposta;
   }
 };
