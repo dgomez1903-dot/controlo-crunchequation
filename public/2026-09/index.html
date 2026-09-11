@@ -532,7 +532,7 @@
       .then(function(d){
         podeGravar = !!d.podeGravar; marcarAuth();
         if(d.estado && d.at > lastAt){
-          adopt(d.estado); lastAt = d.at; local(); renderAll();
+          adopt(d.estado); migrarSaldo(); lastAt = d.at; local(); renderAll();
           st.textContent = podeGravar ? 'Atualizado a partir do servidor.' : 'Atualizado. Só leitura.';
         }else if(!silencioso){
           st.textContent = podeGravar ? 'Já estava atualizado.' : 'Já estava atualizado. Só leitura.';
@@ -603,7 +603,7 @@
       renderAll(); save();
     });
     el.querySelector('button.toggle').addEventListener('click', function(){
-      state.paid[o.id] = isDone(o) ? 0 : o.val;
+      definirPago(o, isDone(o) ? 0 : o.val);
       renderAll(); save();
     });
     el.querySelector('button.edit').addEventListener('click', function(){
@@ -670,7 +670,7 @@
         late: due ? false : f('late').checked,
         doc:f('doc').value.trim(), brk:f('brk').value.trim()
       };
-      state.paid[o.id] = r2(pg);
+      definirPago(o, pg);
       editing = null; renderAll(); save();
     });
     btns[1].addEventListener('click', function(){ editing = null; renderAll(); });
@@ -722,37 +722,41 @@
     return r2(p);
   }
 
-  // O campo mostra o saldo de agora. Por dentro guardamos o saldo antes dos
-  // pagamentos marcados, para o campo poder descer sozinho a cada marcação.
-  function baseSaldo(pago){
-    if(state.cash.base === undefined || state.cash.base === null){
-      state.cash.base = r2((state.cash.saldo || 0) + pago);
+  // O saldo é um valor próprio. Só muda quando marcas, desmarcas ou escreves
+  // um valor novo. Apagar uma linha já paga não devolve o dinheiro à conta.
+  function definirPago(o, novo){
+    var antes = paidOf(o);
+    novo = Math.max(0, Math.min(r2(novo), o.val));
+    state.paid[o.id] = novo;
+    state.cash.saldo = r2((state.cash.saldo || 0) - (novo - antes));
+  }
+
+  // Estados antigos guardavam o saldo de antes dos pagamentos.
+  function migrarSaldo(){
+    if(state.cash.base !== undefined && state.cash.base !== null){
+      state.cash.saldo = r2(state.cash.base - totalPago());
+      delete state.cash.base;
     }
-    return state.cash.base;
   }
 
   function renderCash(){
-    var total = 0;
-    items().forEach(function(o){ total += o.val; });
-    var pago = totalPago();
-    var base = baseSaldo(pago);
-    var atual = r2(base - pago);   // é este que aparece no campo
-    var falta = r2(total - base);
+    var porPagar = 0;
+    items().forEach(function(o){ porPagar += leftOf(o); });
+    var saldo = r2(state.cash.saldo || 0);
+    var reforco = r2(porPagar - saldo);
 
     var inp = document.getElementById('saldo');
-    if(document.activeElement !== inp) inp.value = atual.toFixed(2);
+    if(document.activeElement !== inp) inp.value = saldo.toFixed(2);
 
-    document.getElementById('marcado').textContent = eur(pago);
-    document.getElementById('gap').textContent = eur(Math.max(falta, 0));
-    document.querySelector('.cash-line.big').classList.toggle('ok', falta <= 0);
+    document.getElementById('marcado').textContent = eur(totalPago());
+    document.getElementById('gap').textContent = eur(Math.max(reforco, 0));
+    document.querySelector('.cash-line.big').classList.toggle('ok', reforco <= 0);
 
     var hint = document.getElementById('cashHint');
-    if(atual < 0){
+    if(saldo < 0){
       hint.textContent = 'O saldo ficou negativo: marcaste mais pagamentos do que o dinheiro que tinhas em conta.';
-    }else if(pago > 0){
-      hint.textContent = 'Desce sozinho a cada pagamento que marcas. Escreve aqui o valor real sempre que quiseres acertar pelo banco.';
     }else{
-      hint.textContent = 'Escreve o saldo real da conta. Desce sozinho à medida que marcares pagamentos.';
+      hint.textContent = 'Desce a cada pagamento que marcas. Apagar uma linha já paga não o altera. Escreve aqui o valor real sempre que quiseres acertar pelo banco.';
     }
   }
 
@@ -768,7 +772,7 @@
     document.getElementById('selList').innerHTML = picked.map(function(o){
       return '<li><span>'+esc(o.name)+'</span><b>'+eur(leftOf(o))+'</b></li>';
     }).join('');
-    var after = r2(baseSaldo(totalPago()) - totalPago() - sum);
+    var after = r2((state.cash.saldo || 0) - sum);
     var b = document.getElementById('selAfter');
     b.textContent = eur(after);
     b.className = 'mono ' + (after < 0 ? 'neg' : 'pos');
@@ -822,8 +826,6 @@
   document.getElementById('saldo').addEventListener('input', function(e){
     var v = parseFloat(e.target.value);
     if(isNaN(v)) v = 0;
-    // O que escreves é o saldo de agora, logo a base é isso mais o que já marcaste.
-    state.cash.base = r2(v + totalPago());
     state.cash.saldo = r2(v);
     renderCash(); renderSel(); save();
   });
@@ -832,7 +834,7 @@
     state.sel = {}; renderAll(); save();
   });
   document.getElementById('selPay').addEventListener('click', function(){
-    items().forEach(function(o){ if(state.sel[o.id]) state.paid[o.id] = o.val; });
+    items().forEach(function(o){ if(state.sel[o.id]) definirPago(o, o.val); });
     state.sel = {}; renderAll(); save();
   });
 
@@ -914,7 +916,7 @@
     editing = null; renderAll(); save();
   });
 
-  load(); marcarAuth(); renderAll(); pull(true);
+  load(); migrarSaldo(); marcarAuth(); renderAll(); pull(true);
 })();
 </script>
 </body>
