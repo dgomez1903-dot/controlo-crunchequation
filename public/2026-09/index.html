@@ -245,8 +245,8 @@
       <p class="hint" id="cashHint"></p>
     </div>
     <div class="cash-out">
-      <div class="cash-line"><span>Falta reforçar</span><b class="mono" id="gap">—</b></div>
-      <div class="cash-line big"><span>Saldo depois do que já marcaste</span><b class="mono" id="restante">—</b></div>
+      <div class="cash-line"><span>Já marcaste como pago</span><b class="mono" id="marcado">—</b></div>
+      <div class="cash-line big"><span>Falta reforçar</span><b class="mono" id="gap">—</b></div>
     </div>
   </div>
 
@@ -716,27 +716,43 @@
     document.getElementById('mDueCount').textContent = nl ? (nl===1?'1 item em atraso':nl+' itens em atraso') : '';
   }
 
+  function totalPago(){
+    var p = 0;
+    items().forEach(function(o){ p += paidOf(o); });
+    return r2(p);
+  }
+
+  // O campo mostra o saldo de agora. Por dentro guardamos o saldo antes dos
+  // pagamentos marcados, para o campo poder descer sozinho a cada marcação.
+  function baseSaldo(pago){
+    if(state.cash.base === undefined || state.cash.base === null){
+      state.cash.base = r2((state.cash.saldo || 0) + pago);
+    }
+    return state.cash.base;
+  }
+
   function renderCash(){
-    var total = 0, pago = 0;
-    items().forEach(function(o){ total += o.val; pago += paidOf(o); });
-    var saldo = state.cash.saldo || 0;
-    var restante = r2(saldo - pago);   // desce a cada pagamento marcado
-    var falta = r2(total - saldo);     // o que é preciso reforçar para fechar o mês
+    var total = 0;
+    items().forEach(function(o){ total += o.val; });
+    var pago = totalPago();
+    var base = baseSaldo(pago);
+    var atual = r2(base - pago);   // é este que aparece no campo
+    var falta = r2(total - base);
 
     var inp = document.getElementById('saldo');
-    if(document.activeElement !== inp) inp.value = saldo ? saldo.toFixed(2) : '';
+    if(document.activeElement !== inp) inp.value = atual.toFixed(2);
 
+    document.getElementById('marcado').textContent = eur(pago);
     document.getElementById('gap').textContent = eur(Math.max(falta, 0));
-    document.getElementById('restante').textContent = eur(restante);
-    document.querySelector('.cash-line.big').classList.toggle('ok', restante >= 0);
+    document.querySelector('.cash-line.big').classList.toggle('ok', falta <= 0);
 
     var hint = document.getElementById('cashHint');
-    if(pago > 0){
-      hint.textContent = 'Já marcaste '+eur(pago)+' em pagamentos. O saldo ao lado já os desconta.';
-    }else if(falta > 0){
-      hint.textContent = 'Escreve o saldo real da conta. À medida que marcares pagamentos, o valor ao lado desce.';
+    if(atual < 0){
+      hint.textContent = 'O saldo ficou negativo: marcaste mais pagamentos do que o dinheiro que tinhas em conta.';
+    }else if(pago > 0){
+      hint.textContent = 'Desce sozinho a cada pagamento que marcas. Escreve aqui o valor real sempre que quiseres acertar pelo banco.';
     }else{
-      hint.textContent = 'O saldo cobre tudo o que há a pagar este mês.';
+      hint.textContent = 'Escreve o saldo real da conta. Desce sozinho à medida que marcares pagamentos.';
     }
   }
 
@@ -752,7 +768,7 @@
     document.getElementById('selList').innerHTML = picked.map(function(o){
       return '<li><span>'+esc(o.name)+'</span><b>'+eur(leftOf(o))+'</b></li>';
     }).join('');
-    var after = (state.cash.saldo||0) - sum;
+    var after = r2(baseSaldo(totalPago()) - totalPago() - sum);
     var b = document.getElementById('selAfter');
     b.textContent = eur(after);
     b.className = 'mono ' + (after < 0 ? 'neg' : 'pos');
@@ -805,7 +821,10 @@
 
   document.getElementById('saldo').addEventListener('input', function(e){
     var v = parseFloat(e.target.value);
-    state.cash.saldo = (!isNaN(v) && v >= 0) ? r2(v) : 0;
+    if(isNaN(v)) v = 0;
+    // O que escreves é o saldo de agora, logo a base é isso mais o que já marcaste.
+    state.cash.base = r2(v + totalPago());
+    state.cash.saldo = r2(v);
     renderCash(); renderSel(); save();
   });
 
