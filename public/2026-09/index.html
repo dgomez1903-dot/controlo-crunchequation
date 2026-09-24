@@ -82,7 +82,8 @@
   .gh .prev h4{margin:0 0 12px;font-size:.8rem;font-weight:600;color:var(--ink-soft)}
   .gh .prev-form{display:grid;grid-template-columns:1fr 120px 150px auto;gap:10px;align-items:end}
   .gh .prev-form label{display:block;font-size:.72rem;color:var(--ink-soft)}
-  .gh .prev-form input{display:block;margin-top:4px;width:100%;font-family:inherit;font-size:.88rem;
+  .gh .prev-form input{display:block;margin-top:4px;width:100%;max-width:none;
+    font-family:inherit;font-size:.88rem;
     padding:7px 9px;border:1px solid var(--rule);background:#FAFCFC;color:var(--ink)}
   .gh .prev-form input.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
   .gh .prev-form button{font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;
@@ -92,6 +93,19 @@
   .gh .ent{display:grid;grid-template-columns:1fr 130px 22px;gap:12px;align-items:center;
     padding:9px 0;border-bottom:1px solid var(--rule-soft);font-size:.85rem}
   .gh .ent:last-child{border-bottom:none}
+  .gh .prev-form .full{grid-column:1/-1}
+  .gh .prev-form .chk{display:flex;align-items:center;gap:8px;font-size:.76rem;color:var(--ink-soft)}
+  .gh .prev-form .chk input{width:auto;margin:0;padding:0}
+  .gh .ent.duv{opacity:.82}
+  .gh .ent.duv .ent-val{font-weight:500}
+  .gh .ent-sel{
+    display:inline-block;font-size:.63rem;font-weight:600;margin-left:8px;vertical-align:1px;
+    padding:1px 6px;border:1px solid currentColor;cursor:pointer;background:none;font-family:inherit;
+  }
+  .gh .ent-sel.duv{color:#A8681B}
+  .gh .ent-sel.ok{color:var(--ok)}
+  .gh .ent-nota{display:block;font-size:.73rem;color:var(--ink-soft);margin-top:3px}
+  .gh .cash-line .sub{display:block;font-size:.7rem;color:var(--ink-faint);margin-top:3px}
   .gh .ent-when{display:block;font-size:.72rem;color:var(--ink-faint);margin-top:1px}
   .gh .ent-when.ja{color:var(--ok);font-weight:600}
   .gh .ent-val{text-align:right;font-weight:600}
@@ -245,7 +259,7 @@
     .gh .prev{margin-top:0}
     .gh .prev-form{grid-template-columns:1fr 1fr}
     .gh .prev-form label:first-child{grid-column:1/-1}
-    .gh .prev-form button{grid-column:1/-1;padding:10px}
+    .gh .prev-form button{grid-column:1/-1;padding:10px;order:9}
     .selbox{right:0;left:0;top:auto;bottom:0;width:auto;border-width:2px 0 0;
       transform:translateY(calc(100% + 10px));padding:13px 16px}
     .selbox.up{transform:translateY(0)}
@@ -313,12 +327,17 @@
           <input id="eData" type="date">
         </label>
         <button id="eAdd">Juntar</button>
+        <label class="full">Nota <span style="color:var(--ink-faint)">(opcional)</span>
+          <input id="eNota" type="text" placeholder="Valor e data por confirmar com o cliente">
+        </label>
+        <label class="chk full"><input id="eDuv" type="checkbox" checked> Valor ou data por confirmar</label>
       </div>
       <p class="err" id="eErr"></p>
       <div id="entradas"></div>
     </div>
     <div class="cash-out">
-      <div class="cash-line"><span>Total a entrar</span><b class="mono" id="prevTotal">—</b></div>
+      <div class="cash-line"><span>Total a entrar</span><b class="mono" id="prevTotal">—</b>
+        <span class="sub" id="prevDuv"></span></div>
       <div class="cash-line big"><span>Falta, contando com as entradas</span><b class="mono" id="prevGap">—</b></div>
     </div>
   </div>
@@ -940,6 +959,11 @@
     entradas().forEach(function(e){ t += e.val; });
     return r2(t);
   }
+  function porConfirmar(){
+    var t = 0;
+    entradas().forEach(function(e){ if(e.duv) t += e.val; });
+    return r2(t);
+  }
   function quandoEntra(iso){
     if(!iso) return 'sem data';
     var d = days(iso);
@@ -964,13 +988,19 @@
     lista.forEach(function(e){
       var q = e.data ? quandoEntra(e.data) : { txt:'sem data', ja:false };
       var d = document.createElement('div');
-      d.className = 'ent';
+      d.className = 'ent' + (e.duv ? ' duv' : '');
       d.innerHTML =
         '<div><b>'+esc(e.nome)+'</b>'+
-          '<span class="ent-when'+(q.ja?' ja':'')+'">'+esc(q.txt)+'</span></div>'+
+          '<button class="ent-sel '+(e.duv?'duv':'ok')+'">'+(e.duv?'por confirmar':'confirmada')+'</button>'+
+          '<span class="ent-when'+(q.ja?' ja':'')+'">'+esc(q.txt)+'</span>'+
+          (e.nota ? '<span class="ent-nota">'+esc(e.nota)+'</span>' : '')+'</div>'+
         '<div class="ent-val mono">'+eur(e.val)+'</div>'+
-        '<div><button title="apagar" aria-label="apagar">×</button></div>';
-      d.querySelector('button').addEventListener('click', function(){
+        '<div><button class="x" title="apagar" aria-label="apagar">×</button></div>';
+      d.querySelector('button.ent-sel').addEventListener('click', function(){
+        e.duv = !e.duv;
+        renderEntradas(); renderCash(); save();
+      });
+      d.querySelector('button.x').addEventListener('click', function(){
         state.entradas = entradas().filter(function(x){ return x.id !== e.id; });
         renderEntradas(); renderCash(); save();
       });
@@ -992,8 +1022,11 @@
     document.querySelector('.cash .cash-line.big').classList.toggle('ok', reforco <= 0);
 
     var entra = totalEntradas();
+    var duvida = porConfirmar();
     var faltaDepois = r2(reforco - entra);
     document.getElementById('prevTotal').textContent = eur(entra);
+    document.getElementById('prevDuv').textContent =
+      duvida > 0 ? 'inclui ' + eur(duvida) + ' por confirmar' : (entra > 0 ? 'tudo confirmado' : '');
     document.getElementById('prevGap').textContent = eur(Math.max(faltaDepois, 0));
     document.querySelector('.prev .cash-line.big').classList.toggle('ok', faltaDepois <= 0);
 
@@ -1076,14 +1109,18 @@
     if(isNaN(val) || val <= 0){ err.textContent = 'Falta um valor maior do que zero.'; return; }
     err.textContent = '';
     entradas().push({ id:'e'+Date.now()+Math.floor(Math.random()*1000),
-                      nome:nome, val:r2(val), data:data || null });
+                      nome:nome, val:r2(val), data:data || null,
+                      nota:document.getElementById('eNota').value.trim(),
+                      duv:document.getElementById('eDuv').checked });
     document.getElementById('eNome').value = '';
     document.getElementById('eVal').value = '';
     document.getElementById('eData').value = '';
+    document.getElementById('eNota').value = '';
+    document.getElementById('eDuv').checked = true;
     renderEntradas(); renderCash(); save();
   });
 
-  ['eNome','eVal','eData'].forEach(function(id){
+  ['eNome','eVal','eData','eNota'].forEach(function(id){
     document.getElementById(id).addEventListener('keydown', function(ev){
       if(ev.key === 'Enter') document.getElementById('eAdd').click();
     });
