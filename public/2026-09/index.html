@@ -89,10 +89,23 @@
 
   .gh .ob{background:var(--card);border:1px solid var(--rule);border-left:5px solid var(--tone,var(--ink));
     padding:12px 14px;margin-bottom:8px;
-    display:grid;grid-template-columns:26px 1fr 165px 135px 132px;gap:12px;align-items:center}
+    display:grid;grid-template-columns:22px 26px 1fr 165px 135px 118px;gap:12px;align-items:center}
   .gh .ob > *{min-width:0}
   .gh .ob.paid{opacity:.6;border-left-color:var(--ok)}
   .gh .ob.sel{background:#F2F8FC;border-color:var(--focus)}
+  .gh .grab{
+    display:flex;align-items:center;justify-content:center;
+    cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
+    color:var(--ink-faint);font-size:1.05rem;line-height:1;padding:8px 2px;
+    align-self:stretch;
+  }
+  .gh .grab:hover{color:var(--ink)}
+  .gh .grab:active{cursor:grabbing}
+  .gh .ob.dragging{
+    box-shadow:0 10px 26px rgba(20,32,43,.22);position:relative;z-index:5;
+    border-color:var(--focus);
+  }
+  .gh .ob.dragging .grab{color:var(--focus)}
   .gh .ob-pick{display:flex;justify-content:center}
   .gh .ob-pick input{width:17px;height:17px;cursor:pointer;accent-color:var(--focus)}
   .gh .ob-name{font-weight:600;font-size:.93rem;margin-bottom:2px}
@@ -122,6 +135,7 @@
   .gh button.link{font:inherit;font-size:.72rem;cursor:pointer;background:none;border:none;
     color:var(--ink-faint);text-decoration:underline;padding:0}
   .gh button.link.warn{color:var(--due);font-weight:600}
+  .gh button.link:disabled{opacity:.3;cursor:default;text-decoration:none}
   .gh button:focus-visible,.gh input:focus-visible,.gh select:focus-visible,.gh summary:focus-visible{
     outline:2px solid var(--focus);outline-offset:2px}
 
@@ -195,8 +209,8 @@
   .gh .sync input[type=password]:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 
   @media (max-width:820px){
-    .gh .ob{grid-template-columns:26px 1fr;gap:9px}
-    .gh .ob-val,.gh .ob-due,.gh .ob-acts{grid-column:2}
+    .gh .ob{grid-template-columns:22px 26px 1fr;gap:9px}
+    .gh .ob-val,.gh .ob-due,.gh .ob-acts{grid-column:3}
     .gh .ob-val,.gh .ob-due{text-align:left}
     .gh .ob-acts{flex-direction:row;align-items:center;flex-wrap:wrap;gap:10px 14px}
     .gh .ob-acts .toggle{width:auto;padding:8px 14px}
@@ -260,7 +274,7 @@
   </div>
 
   <section>
-    <h3>Pagamentos <em>na ordem que definires — ⤒ manda para o topo, ↑ ↓ movem uma posição</em></h3>
+    <h3>Pagamentos <em>na ordem que definires — arrasta pelo ⠿ à esquerda</em></h3>
     <div id="lista"></div>
   </section>
 
@@ -475,13 +489,6 @@
     state.ord = ordenados().map(function(o){ return o.id; });
     return state.ord;
   }
-  function mover(id, delta){
-    var u = fixarOrdem(), i = u.indexOf(id), j = i + delta;
-    if(i === -1) return;
-    if(j < 0) j = 0;
-    if(j >= u.length) j = u.length - 1;
-    u.splice(j, 0, u.splice(i, 1)[0]);
-  }
   function paraTopo(id){
     var u = fixarOrdem(), i = u.indexOf(id);
     if(i > 0) u.unshift(u.splice(i, 1)[0]);
@@ -641,9 +648,77 @@
     renderAll(); save();
   }
 
+  // ---- arrastar com o rato ou o dedo -----------------------------------
+  // A linha arrastada nunca sai do sítio no DOM: são as vizinhas que passam
+  // para o outro lado dela. Se a movêssemos, o browser perdia o ponteiro.
+  var aArrastar = null;
+
+  function ligarArrasto(el){
+    el.querySelector('.grab').addEventListener('pointerdown', function(e){
+      if(e.button) return;
+      e.preventDefault();
+      if(aArrastar) return;
+      aArrastar = el;
+      el.classList.add('dragging');
+      document.addEventListener('pointermove', aoMover, { passive:false });
+      document.addEventListener('pointerup', aoLargar);
+      document.addEventListener('pointercancel', aoLargar);
+    });
+  }
+
+  function aoMover(e){
+    var el = aArrastar;
+    if(!el) return;
+    e.preventDefault();
+
+    var caixa = document.getElementById('lista');
+    var y = e.clientY;
+
+    // chegar perto do topo ou do fundo faz a página acompanhar
+    var margem = 110;
+    if(y < margem) window.scrollBy(0, -16);
+    else if(y > window.innerHeight - margem) window.scrollBy(0, 16);
+
+    var guarda, r;
+    for(guarda = 0; guarda < 60; guarda++){
+      var ant = el.previousElementSibling;
+      if(!ant) break;
+      r = ant.getBoundingClientRect();
+      if(y >= r.top + r.height / 2) break;
+      caixa.insertBefore(ant, el.nextSibling);
+    }
+    for(guarda = 0; guarda < 60; guarda++){
+      var seg = el.nextElementSibling;
+      if(!seg) break;
+      r = seg.getBoundingClientRect();
+      if(y <= r.top + r.height / 2) break;
+      caixa.insertBefore(seg, el);
+    }
+  }
+
+  function aoLargar(){
+    var el = aArrastar;
+    if(!el) return;
+    el.classList.remove('dragging');
+    aArrastar = null;
+    document.removeEventListener('pointermove', aoMover);
+    document.removeEventListener('pointerup', aoLargar);
+    document.removeEventListener('pointercancel', aoLargar);
+    guardarOrdemVisivel();
+  }
+
+  function guardarOrdemVisivel(){
+    var caixa = document.getElementById('lista');
+    state.ord = Array.prototype.slice.call(caixa.children)
+      .map(function(el){ return el.dataset.id; })
+      .filter(Boolean);
+    renderAll(); save();
+  }
+
   function row(o, i, n){
     var done = isDone(o), part = paidOf(o), sel = !!state.sel[o.id];
     var el = document.createElement('div');
+    el.dataset.id = o.id;
     el.className = 'ob' + (done?' paid':'') + (sel?' sel':'');
     el.style.setProperty('--tone', CATS[o.cat].tone);
 
@@ -652,6 +727,7 @@
     else if(done && part > 0) valHtml += '<span class="part">pago por inteiro</span>';
 
     el.innerHTML =
+      '<div class="grab" title="arrastar para mudar de posição" aria-label="arrastar">⠿</div>'+
       '<div class="ob-pick"><input type="checkbox" '+(sel?'checked':'')+' aria-label="selecionar '+esc(o.name)+'"></div>'+
       '<div><div class="ob-name">'+esc(o.name)+'<span class="ob-tag">'+CATS[o.cat].lab+'</span></div>'+
         (o.doc ? '<div class="ob-doc mono">'+esc(o.doc)+'</div>' : '')+
@@ -660,11 +736,7 @@
       '<div class="ob-due'+(!done && isLate(o) ? ' late':'')+'">'+esc(dueLine(o))+'</div>'+
       '<div class="ob-acts">'+
         '<button class="toggle'+(done?' on':'')+'">'+(done?'Pago':'Marcar pago')+'</button>'+
-        '<div class="ord">'+
-          '<button class="top" title="mandar para o topo" aria-label="mandar para o topo"'+(i===0?' disabled':'')+'>⤒</button>'+
-          '<button class="up" title="subir uma posição" aria-label="subir"'+(i===0?' disabled':'')+'>↑</button>'+
-          '<button class="down" title="descer uma posição" aria-label="descer"'+(i===n-1?' disabled':'')+'>↓</button>'+
-        '</div>'+
+        '<button class="link top"'+(i===0?' disabled':'')+'>mandar para o topo</button>'+
         '<button class="link edit">editar valor ou data</button>'+
         '<button class="link del">apagar linha</button>'+
       '</div>';
@@ -680,12 +752,7 @@
     el.querySelector('button.top').addEventListener('click', function(){
       paraTopo(o.id); renderAll(); save();
     });
-    el.querySelector('button.up').addEventListener('click', function(){
-      mover(o.id, -1); renderAll(); save();
-    });
-    el.querySelector('button.down').addEventListener('click', function(){
-      mover(o.id, 1); renderAll(); save();
-    });
+    ligarArrasto(el);
 
     el.querySelector('button.edit').addEventListener('click', function(){
       editing = (editing === o.id) ? null : o.id;
@@ -884,7 +951,7 @@
     if(isNaN(val) || val <= 0){ err.textContent='Falta um valor maior do que zero.'; return; }
     if(!due && !late){ err.textContent='Escolhe uma data-limite ou marca como já vencido.'; return; }
     var novoId = 'x'+Date.now()+Math.floor(Math.random()*1000);
-    if(Array.isArray(state.ord)) state.ord.unshift(novoId);   // entra no topo
+    if(Array.isArray(state.ord)) state.ord.push(novoId);   // entra no fim da lista
     state.extra.push({
       id:novoId,
       cat:fCat.value, name:name, val:r2(val), due:due||null, late:!due,
