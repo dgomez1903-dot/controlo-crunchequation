@@ -78,6 +78,28 @@
   .gh .cash-line.big b{font-size:1.85rem;letter-spacing:-.02em;color:var(--due)}
   .gh .cash-line.big.ok b{color:var(--ok)}
 
+  .gh .prev{margin-top:-14px;margin-bottom:30px}
+  .gh .prev h4{margin:0 0 12px;font-size:.8rem;font-weight:600;color:var(--ink-soft)}
+  .gh .prev-form{display:grid;grid-template-columns:1fr 120px 150px auto;gap:10px;align-items:end}
+  .gh .prev-form label{display:block;font-size:.72rem;color:var(--ink-soft)}
+  .gh .prev-form input{display:block;margin-top:4px;width:100%;font-family:inherit;font-size:.88rem;
+    padding:7px 9px;border:1px solid var(--rule);background:#FAFCFC;color:var(--ink)}
+  .gh .prev-form input.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+  .gh .prev-form button{font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;
+    padding:8px 16px;border:1.5px solid var(--ink);background:var(--ink);color:#fff}
+  .gh .prev .err{margin:8px 0 0}
+  .gh .ents{margin-top:14px;border-top:1px solid var(--rule)}
+  .gh .ent{display:grid;grid-template-columns:1fr 130px 22px;gap:12px;align-items:center;
+    padding:9px 0;border-bottom:1px solid var(--rule-soft);font-size:.85rem}
+  .gh .ent:last-child{border-bottom:none}
+  .gh .ent-when{display:block;font-size:.72rem;color:var(--ink-faint);margin-top:1px}
+  .gh .ent-when.ja{color:var(--ok);font-weight:600}
+  .gh .ent-val{text-align:right;font-weight:600}
+  .gh .ent button{font:inherit;font-size:.9rem;line-height:1;cursor:pointer;
+    background:none;border:none;color:var(--ink-faint);padding:2px 4px}
+  .gh .ent button:hover{color:var(--due)}
+  .gh .sem-ent{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--rule);
+    font-size:.78rem;color:var(--ink-faint)}
   .gh h3{font-size:.95rem;font-weight:600;margin:0 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .gh h3 em{font-style:normal;font-size:.75rem;font-weight:400;color:var(--ink-faint)}
   .gh section{margin-bottom:30px}
@@ -220,6 +242,10 @@
     .gh .cash-out{border-left:none;border-top:1px solid var(--rule)}
     .gh .stub-right{text-align:left;min-width:0}
     .gh .grid{grid-template-columns:1fr}
+    .gh .prev{margin-top:0}
+    .gh .prev-form{grid-template-columns:1fr 1fr}
+    .gh .prev-form label:first-child{grid-column:1/-1}
+    .gh .prev-form button{grid-column:1/-1;padding:10px}
     .selbox{right:0;left:0;top:auto;bottom:0;width:auto;border-width:2px 0 0;
       transform:translateY(calc(100% + 10px));padding:13px 16px}
     .selbox.up{transform:translateY(0)}
@@ -270,6 +296,30 @@
     <div class="cash-out">
       <div class="cash-line"><span>Já marcaste como pago</span><b class="mono" id="marcado">—</b></div>
       <div class="cash-line big"><span>Falta reforçar</span><b class="mono" id="gap">—</b></div>
+    </div>
+  </div>
+
+  <div class="cash prev">
+    <div class="cash-in">
+      <h4>Entradas previstas</h4>
+      <div class="prev-form">
+        <label>De onde vem
+          <input id="eNome" type="text" placeholder="Fatura ACME 2026/118">
+        </label>
+        <label>Valor (EUR)
+          <input id="eVal" class="mono" type="number" step="0.01" inputmode="decimal" placeholder="0,00">
+        </label>
+        <label>Data prevista
+          <input id="eData" type="date">
+        </label>
+        <button id="eAdd">Juntar</button>
+      </div>
+      <p class="err" id="eErr"></p>
+      <div id="entradas"></div>
+    </div>
+    <div class="cash-out">
+      <div class="cash-line"><span>Total a entrar</span><b class="mono" id="prevTotal">—</b></div>
+      <div class="cash-line big"><span>Falta, contando com as entradas</span><b class="mono" id="prevGap">—</b></div>
     </div>
   </div>
 
@@ -444,7 +494,7 @@
   // Ordem de arranque. A partir do primeiro movimento, és tu que mandas.
   var ORDEM_INICIAL = ['venc08','crunchbr','dmr_at','dmr_ss','ayvens','prio','edp'];
 
-  var state = { ov:{}, paid:{}, killed:{}, extra:[], sel:{}, ord:null, cash:{ saldo:190.16 } };
+  var state = { ov:{}, paid:{}, killed:{}, extra:[], sel:{}, ord:null, entradas:[], cash:{ saldo:190.16 } };
   var editing = null;
   var st = document.getElementById('status');
 
@@ -549,6 +599,7 @@
     state.ov = o.ov||{}; state.paid = o.paid||{}; state.killed = o.killed||{};
     state.extra = o.extra||[]; state.sel = o.sel||{};
     state.ord = Array.isArray(o.ord) ? o.ord : null;
+    state.entradas = Array.isArray(o.entradas) ? o.entradas : [];
     state.cash = o.cash || state.cash;
     editing = null;
   }
@@ -879,6 +930,54 @@
     }
   }
 
+  // ---- entradas previstas ----------------------------------------------
+  function entradas(){
+    if(!Array.isArray(state.entradas)) state.entradas = [];
+    return state.entradas;
+  }
+  function totalEntradas(){
+    var t = 0;
+    entradas().forEach(function(e){ t += e.val; });
+    return r2(t);
+  }
+  function quandoEntra(iso){
+    if(!iso) return 'sem data';
+    var d = days(iso);
+    if(d < 0) return { txt:'era a ' + ptDate(iso) + ' · ainda não entrou', ja:false };
+    if(d === 0) return { txt:'entra hoje', ja:true };
+    if(d === 1) return { txt:'entra amanhã · ' + ptDate(iso), ja:false };
+    return { txt:'daqui a ' + d + ' dias · ' + ptDate(iso), ja:false };
+  }
+
+  function renderEntradas(){
+    var caixa = document.getElementById('entradas');
+    var lista = entradas().slice().sort(function(a,b){
+      return (a.data || '9999') < (b.data || '9999') ? -1 : 1;
+    });
+    if(!lista.length){
+      caixa.className = '';
+      caixa.innerHTML = '<p class="sem-ent">Ainda não há entradas previstas. Junta o que estiver para receber e o valor ao lado passa a contar com isso.</p>';
+      return;
+    }
+    caixa.className = 'ents';
+    caixa.innerHTML = '';
+    lista.forEach(function(e){
+      var q = e.data ? quandoEntra(e.data) : { txt:'sem data', ja:false };
+      var d = document.createElement('div');
+      d.className = 'ent';
+      d.innerHTML =
+        '<div><b>'+esc(e.nome)+'</b>'+
+          '<span class="ent-when'+(q.ja?' ja':'')+'">'+esc(q.txt)+'</span></div>'+
+        '<div class="ent-val mono">'+eur(e.val)+'</div>'+
+        '<div><button title="apagar" aria-label="apagar">×</button></div>';
+      d.querySelector('button').addEventListener('click', function(){
+        state.entradas = entradas().filter(function(x){ return x.id !== e.id; });
+        renderEntradas(); renderCash(); save();
+      });
+      caixa.appendChild(d);
+    });
+  }
+
   function renderCash(){
     var porPagar = 0;
     items().forEach(function(o){ porPagar += leftOf(o); });
@@ -890,7 +989,13 @@
 
     document.getElementById('marcado').textContent = eur(totalPago());
     document.getElementById('gap').textContent = eur(Math.max(reforco, 0));
-    document.querySelector('.cash-line.big').classList.toggle('ok', reforco <= 0);
+    document.querySelector('.cash .cash-line.big').classList.toggle('ok', reforco <= 0);
+
+    var entra = totalEntradas();
+    var faltaDepois = r2(reforco - entra);
+    document.getElementById('prevTotal').textContent = eur(entra);
+    document.getElementById('prevGap').textContent = eur(Math.max(faltaDepois, 0));
+    document.querySelector('.prev .cash-line.big').classList.toggle('ok', faltaDepois <= 0);
 
     var hint = document.getElementById('cashHint');
     if(saldo < 0){
@@ -924,7 +1029,7 @@
     var ud = document.getElementById('undelete');
     ud.hidden = !nk;
     ud.textContent = nk === 1 ? 'Repor 1 linha apagada' : 'Repor '+nk+' linhas apagadas';
-    renderSummary(); renderCash(); renderSel();
+    renderSummary(); renderEntradas(); renderCash(); renderSel();
     var t = document.getElementById('syncText');
     if(t && !t.dataset.dirty) t.value = JSON.stringify(state);
   }
@@ -960,6 +1065,28 @@
     });
     clearForm(); renderAll(); save();
     st.textContent = 'Pagamento adicionado e guardado neste browser.';
+  });
+
+  document.getElementById('eAdd').addEventListener('click', function(){
+    var err = document.getElementById('eErr');
+    var nome = document.getElementById('eNome').value.trim();
+    var val = parseFloat(document.getElementById('eVal').value);
+    var data = document.getElementById('eData').value;
+    if(!nome){ err.textContent = 'Falta dizer de onde vem.'; return; }
+    if(isNaN(val) || val <= 0){ err.textContent = 'Falta um valor maior do que zero.'; return; }
+    err.textContent = '';
+    entradas().push({ id:'e'+Date.now()+Math.floor(Math.random()*1000),
+                      nome:nome, val:r2(val), data:data || null });
+    document.getElementById('eNome').value = '';
+    document.getElementById('eVal').value = '';
+    document.getElementById('eData').value = '';
+    renderEntradas(); renderCash(); save();
+  });
+
+  ['eNome','eVal','eData'].forEach(function(id){
+    document.getElementById(id).addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter') document.getElementById('eAdd').click();
+    });
   });
 
   document.getElementById('saldo').addEventListener('input', function(e){
@@ -1000,6 +1127,8 @@
       state.ov=o.ov||{}; state.paid=o.paid||{}; state.killed=o.killed||{};
       state.extra=o.extra||[]; state.sel=o.sel||{};
       state.ord = Array.isArray(o.ord) ? o.ord : null;
+      state.entradas = Array.isArray(o.entradas) ? o.entradas : [];
+    state.entradas = Array.isArray(o.entradas) ? o.entradas : [];
       state.cash=o.cash||{saldo:0};
       syncText.dataset.dirty=''; editing=null; renderAll(); save();
       syncStatus.textContent='Importado.';
@@ -1053,7 +1182,7 @@
   });
 
   document.getElementById('reset').addEventListener('click', function(){
-    state = { ov:{}, paid:{}, killed:{}, extra:[], sel:{}, ord:null,
+    state = { ov:{}, paid:{}, killed:{}, extra:[], sel:{}, ord:null, entradas:[],
               cash:{ saldo:state.cash.saldo || 0 } };
     editing = null; renderAll(); save();
   });
